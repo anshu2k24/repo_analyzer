@@ -1,0 +1,18 @@
+# Virtual environment
+git_venv/
+venv/
+.env
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local data
+data/
+chroma_db/
+repos/
+
+# IDE files
+.vscode/
+.idea/
