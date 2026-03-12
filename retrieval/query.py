@@ -10,46 +10,66 @@ client = chromadb.PersistentClient(path=DB_PATH)
 collection = client.get_collection(COLLECTION_NAME)
 
 
-def retrieve(query, top_k=4):
+def retrieve(query, repo_name=None, top_k=4):
     query_embedding = model.encode([query]).tolist()
 
-    results = collection.query(
-        query_embeddings=query_embedding,
-        n_results=top_k
-    )
+    kwargs = {
+        "query_embeddings": query_embedding,
+        "n_results": top_k
+    }
 
-    return results["documents"][0]
+    if repo_name:
+        kwargs["where"] = {"repo": repo_name}
 
+    results = collection.query(**kwargs)
+
+    return results["documents"][0] if results["documents"] else []
+
+
+import json
 
 def ask_llama(prompt):
     response = requests.post(
         "http://localhost:11434/api/generate",
         json={
             # "model": "llama3.1:8b",
-            "model": "llama3.1:latest",
+            "model": "qwen2.5-coder",
+            # "model": "llama3.1:latest",
             "prompt": prompt,
-            "stream": False
-        }
+            "stream": True
+        },
+        stream=True
     )
-    return response.json()["response"]
+    
+    for line in response.iter_lines():
+        if line:
+            try:
+                data = json.loads(line.decode("utf-8"))
+                if "response" in data:
+                    yield data["response"]
+            except Exception as e:
+                pass
 
 
-def ask_question(user_query):
-    retrieved_chunks = retrieve(user_query)
+def ask_question(user_query, repo_name=None):
+    retrieved_chunks = retrieve(user_query, repo_name)
 
-    context = "\n\n---\n\n".join(retrieved_chunks)
+    if not retrieved_chunks:
+        context = "No relevant context found."
+    else:
+        context = "\n\n---\n\n".join(retrieved_chunks)
 
     prompt = f"""
-You are an AI technical interviewer.
+You are an AI assistant helping a user understand a codebase.
 
-Below is relevant code from a candidate's repository:
+Below is retrieved code from the repository:
 
 {context}
 
 User Question:
 {user_query}
 
-Answer based strictly on the code context above.
+Please provide a direct, concise answer to the User Question based strictly on the code context above. Do NOT critique the code or act like an interviewer unless specifically asked.
 """
 
     return ask_llama(prompt)
